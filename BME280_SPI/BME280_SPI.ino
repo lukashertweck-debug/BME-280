@@ -1,21 +1,28 @@
 /*
- * BME280 sensor driver over SPI for STM32 (Arduino IDE, 3.3 V logic).
+ * BME280 sensor driver over SPI for the ST Nucleo-L152RE
+ * (STM32L152RET6, Arduino IDE + STM32duino core, 3.3 V logic).
  *
- * Wiring (default hardware SPI on most STM32duino boards, e.g. Nucleo/BluePill):
- *   BME280 VCC  -> 3.3 V
+ * Board: "Nucleo-64" / "Nucleo L152RE" in Tools > Board.
+ * Uses SPI1 on the Arduino header pins of the Nucleo:
+ *
+ *   BME280 VCC  -> 3.3 V         (Nucleo 3V3)
  *   BME280 GND  -> GND
- *   BME280 SCK  -> SPI1 SCK   (PA5)
- *   BME280 SDO  -> SPI1 MISO  (PA6)
- *   BME280 SDI  -> SPI1 MOSI  (PA7)
- *   BME280 CSB  -> CS pin     (PA4, see BME280_CS below)
+ *   BME280 SCK  -> D13 / PA5     (SPI1_SCK, also drives on-board LED LD2)
+ *   BME280 SDO  -> D12 / PA6     (SPI1_MISO)
+ *   BME280 SDI  -> D11 / PA7     (SPI1_MOSI)
+ *   BME280 CSB  -> D10 / PB6     (GPIO chip-select, see BME280_CS below)
  *
- * Output: Temperature [degC], Pressure [hPa], Humidity [%RH] via Serial @115200.
+ * Note: LD2 on the Nucleo-L152RE is tied to PA5 and will flicker while SPI
+ * is clocking - harmless, just a side effect of sharing the pin.
+ *
+ * Output: Temperature [degC], Pressure [hPa], Humidity [%RH] via Serial @115200
+ *         (ST-Link VCP on USART2, pins PA2/PA3).
  */
 
 #include <Arduino.h>
 #include <SPI.h>
 
-static const uint8_t BME280_CS = PA4;
+static const uint8_t BME280_CS = PB6;
 
 static const uint8_t REG_ID         = 0xD0;
 static const uint8_t REG_RESET      = 0xE0;
