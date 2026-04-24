@@ -7,10 +7,12 @@
  *
  *   BME280 VCC  -> 3.3 V         (Nucleo 3V3)
  *   BME280 GND  -> GND
- *   BME280 SCK  -> D13 / PA5     (SPI1_SCK, also drives on-board LED LD2)
- *   BME280 SDO  -> D12 / PA6     (SPI1_MISO)
- *   BME280 SDI  -> D11 / PA7     (SPI1_MOSI)
+ *   BME280 SCL  -> D13 / PA5     (SPI1_SCK clock, also drives on-board LED LD2)
+ *   BME280 SDA  -> D11 / PA7     (SPI1_MOSI, data into the sensor)
+ *   BME280 SDD  -> D12 / PA6     (SPI1_MISO, data out of the sensor)
  *   BME280 CSB  -> D10 / PB6     (GPIO chip-select, see BME280_CS below)
+ *
+ * (On Bosch BME280 breakouts SCL == SPI clock, SDA == SDI/MOSI, SDD == SDO/MISO.)
  *
  * Note: LD2 on the Nucleo-L152RE is tied to PA5 and will flicker while SPI
  * is clocking - harmless, just a side effect of sharing the pin.
