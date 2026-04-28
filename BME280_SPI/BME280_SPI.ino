@@ -107,9 +107,9 @@ static uint8_t glyphNeutral[8] = {0x00, 0x0A, 0x0A, 0x00, 0x00, 0x1F, 0x00, 0x00
 static uint8_t glyphSad[8]     = {0x00, 0x0A, 0x0A, 0x00, 0x0E, 0x11, 0x00, 0x00};
 
 static void lcdRegisterFaces() {
-  lcd.customSymbol(FACE_SMILEY,  glyphSmiley);
-  lcd.customSymbol(FACE_NEUTRAL, glyphNeutral);
-  lcd.customSymbol(FACE_SAD,     glyphSad);
+  lcd.createChar(FACE_SMILEY,  glyphSmiley);
+  lcd.createChar(FACE_NEUTRAL, glyphNeutral);
+  lcd.createChar(FACE_SAD,     glyphSad);
 }
 
 static uint8_t faceForRange(float v, float happyLo, float happyHi, float margin) {
