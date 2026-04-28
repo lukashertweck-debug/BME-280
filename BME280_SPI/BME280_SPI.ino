@@ -1,28 +1,38 @@
 /*
  * BME280 sensor driver over SPI for the ST Nucleo-L152RE
- * (STM32L152RET6, Arduino IDE + STM32duino core, 3.3 V logic).
+ * (STM32L152RET6, Arduino IDE + STM32duino core, 3.3 V logic),
+ * with measurements shown on a Grove-LCD RGB Backlight V4.0 over I2C.
  *
  * Board: "Nucleo-64" / "Nucleo L152RE" in Tools > Board.
- * Uses SPI1 on the Arduino header pins of the Nucleo:
  *
- *   BME280 VCC  -> 3.3 V         (Nucleo 3V3)
- *   BME280 GND  -> GND
- *   BME280 SCL  -> D13 / PA5     (SPI1_SCK clock, also drives on-board LED LD2)
- *   BME280 SDA  -> D11 / PA7     (SPI1_MOSI, data into the sensor)
- *   BME280 SDD  -> D12 / PA6     (SPI1_MISO, data out of the sensor)
- *   BME280 CSB  -> D10 / PB6     (GPIO chip-select, see BME280_CS below)
+ * BME280 -> Nucleo (SPI1, Arduino header):
+ *   VCC  -> 3.3 V         (Nucleo 3V3)
+ *   GND  -> GND
+ *   SCL  -> D13 / PA5     (SPI1_SCK clock, also drives on-board LED LD2)
+ *   SDA  -> D11 / PA7     (SPI1_MOSI, data into the sensor)
+ *   SDD  -> D12 / PA6     (SPI1_MISO, data out of the sensor)
+ *   CSB  -> D10 / PB6     (GPIO chip-select, see BME280_CS below)
  *
- * (On Bosch BME280 breakouts SCL == SPI clock, SDA == SDI/MOSI, SDD == SDO/MISO.)
+ * Grove-LCD RGB Backlight V4.0 -> Nucleo (I2C1, Arduino header):
+ *   VCC  -> 5 V           (V4.0 also tolerates 3.3 V, but 5 V is brighter)
+ *   GND  -> GND
+ *   SDA  -> D14 / PB9     (I2C1_SDA)
+ *   SCL  -> D15 / PB8     (I2C1_SCL)
  *
- * Note: LD2 on the Nucleo-L152RE is tied to PA5 and will flicker while SPI
- * is clocking - harmless, just a side effect of sharing the pin.
+ * Library: install "Grove - LCD RGB Backlight" by Seeed Studio (>= v2.0
+ * for V4.0 hardware) via the Arduino Library Manager. It exposes rgb_lcd.h.
  *
- * Output: Temperature [degC], Pressure [hPa], Humidity [%RH] via Serial @115200
- *         (ST-Link VCP on USART2, pins PA2/PA3).
+ * Output layout (16x2), alternates every ~2 s:
+ *   Screen A:  "Temp:    23.5 C"
+ *              "Hum.:    55.0 %"
+ *   Screen B:  "Pressure:       "
+ *              "   1013.2 hPa  "
  */
 
 #include <Arduino.h>
 #include <SPI.h>
+#include <Wire.h>
+#include "rgb_lcd.h"
 
 static const uint8_t BME280_CS = PB6;
 
@@ -64,6 +74,51 @@ struct BME280Calib {
 
 static BME280Calib calib;
 static int32_t t_fine;
+
+static rgb_lcd lcd;
+
+static void lcdShowLine(uint8_t row, const char *text) {
+  char padded[17];
+  size_t i = 0;
+  while (i < 16 && text[i] != '\0') {
+    padded[i] = text[i];
+    ++i;
+  }
+  while (i < 16) {
+    padded[i++] = ' ';
+  }
+  padded[16] = '\0';
+  lcd.setCursor(0, row);
+  lcd.print(padded);
+}
+
+static void lcdShowError(const char *line1, const char *line2) {
+  lcd.setRGB(200, 0, 0);
+  lcdShowLine(0, line1);
+  lcdShowLine(1, line2);
+}
+
+static void lcdShowReadings(float tempC, float pressHPa, float humRH) {
+  static uint8_t screen = 0;
+  static uint32_t lastSwap = 0;
+  const uint32_t now = millis();
+  if (now - lastSwap >= 2000) {
+    screen ^= 1;
+    lastSwap = now;
+  }
+
+  char l1[17];
+  char l2[17];
+  if (screen == 0) {
+    snprintf(l1, sizeof(l1), "Temp:   %5.1f C", tempC);
+    snprintf(l2, sizeof(l2), "Hum.:   %5.1f %%", humRH);
+  } else {
+    snprintf(l1, sizeof(l1), "Pressure:");
+    snprintf(l2, sizeof(l2), "  %6.1f hPa", pressHPa);
+  }
+  lcdShowLine(0, l1);
+  lcdShowLine(1, l2);
+}
 
 static void bmeWrite(uint8_t reg, uint8_t value) {
   SPI.beginTransaction(bmeSpi);
@@ -204,23 +259,25 @@ static void bmeRead(float &tempC, float &pressHPa, float &humRH) {
 }
 
 void setup() {
-  Serial.begin(115200);
-  while (!Serial) { }
+  Wire.begin();
+  lcd.begin(16, 2);
+  lcd.setRGB(0, 180, 90);
+  lcdShowLine(0, "BME280 init...");
+  lcdShowLine(1, "");
 
   if (!bmeBegin()) {
-    Serial.println("BME280 not found on SPI (check wiring / CS pin).");
+    lcdShowError("BME280 not found", "check SPI wiring");
     while (true) { delay(1000); }
   }
-  Serial.println("BME280 ready.");
+
+  lcdShowLine(0, "BME280 ready");
+  lcdShowLine(1, "");
+  delay(800);
 }
 
 void loop() {
   float tempC, pressHPa, humRH;
   bmeRead(tempC, pressHPa, humRH);
-
-  Serial.print("T = ");   Serial.print(tempC, 2);    Serial.print(" degC  ");
-  Serial.print("P = ");   Serial.print(pressHPa, 2); Serial.print(" hPa  ");
-  Serial.print("RH = ");  Serial.print(humRH, 2);    Serial.println(" %");
-
-  delay(1000);
+  lcdShowReadings(tempC, pressHPa, humRH);
+  delay(500);
 }
