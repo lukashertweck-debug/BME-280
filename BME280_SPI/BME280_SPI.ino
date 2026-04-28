@@ -98,6 +98,15 @@ static void lcdShowError(const char *line1, const char *line2) {
   lcdShowLine(1, line2);
 }
 
+static void formatFixed1(char *out, size_t len, float value) {
+  long scaled = lroundf(value * 10.0f);
+  if (scaled < 0) {
+    snprintf(out, len, "-%ld.%ld", (-scaled) / 10, (-scaled) % 10);
+  } else {
+    snprintf(out, len, "%ld.%ld", scaled / 10, scaled % 10);
+  }
+}
+
 static void lcdShowReadings(float tempC, float pressHPa, float humRH) {
   static uint8_t screen = 0;
   static uint32_t lastSwap = 0;
@@ -107,14 +116,21 @@ static void lcdShowReadings(float tempC, float pressHPa, float humRH) {
     lastSwap = now;
   }
 
+  char tempStr[8];
+  char humStr[8];
+  char presStr[10];
+  formatFixed1(tempStr, sizeof(tempStr), tempC);
+  formatFixed1(humStr,  sizeof(humStr),  humRH);
+  formatFixed1(presStr, sizeof(presStr), pressHPa);
+
   char l1[17];
   char l2[17];
   if (screen == 0) {
-    snprintf(l1, sizeof(l1), "Temp:   %5.1f C", tempC);
-    snprintf(l2, sizeof(l2), "Hum.:   %5.1f %%", humRH);
+    snprintf(l1, sizeof(l1), "Temp:   %5s C", tempStr);
+    snprintf(l2, sizeof(l2), "Hum.:   %5s %%", humStr);
   } else {
     snprintf(l1, sizeof(l1), "Pressure:");
-    snprintf(l2, sizeof(l2), "  %6.1f hPa", pressHPa);
+    snprintf(l2, sizeof(l2), "  %7s hPa", presStr);
   }
   lcdShowLine(0, l1);
   lcdShowLine(1, l2);
