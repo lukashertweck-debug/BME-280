@@ -98,6 +98,30 @@ static void lcdShowError(const char *line1, const char *line2) {
   lcdShowLine(1, line2);
 }
 
+static const uint8_t FACE_SMILEY  = 0;
+static const uint8_t FACE_NEUTRAL = 1;
+static const uint8_t FACE_SAD     = 2;
+
+static uint8_t glyphSmiley[8]  = {0x00, 0x0A, 0x0A, 0x00, 0x11, 0x0E, 0x00, 0x00};
+static uint8_t glyphNeutral[8] = {0x00, 0x0A, 0x0A, 0x00, 0x00, 0x1F, 0x00, 0x00};
+static uint8_t glyphSad[8]     = {0x00, 0x0A, 0x0A, 0x00, 0x0E, 0x11, 0x00, 0x00};
+
+static void lcdRegisterFaces() {
+  lcd.customSymbol(FACE_SMILEY,  glyphSmiley);
+  lcd.customSymbol(FACE_NEUTRAL, glyphNeutral);
+  lcd.customSymbol(FACE_SAD,     glyphSad);
+}
+
+static uint8_t faceForRange(float v, float happyLo, float happyHi, float margin) {
+  if (v >= happyLo && v <= happyHi)                       return FACE_SMILEY;
+  if (v >= happyLo - margin && v <= happyHi + margin)     return FACE_NEUTRAL;
+  return FACE_SAD;
+}
+
+static uint8_t faceForTemp(float t)  { return faceForRange(t, 18.0f, 26.0f,  4.0f); }
+static uint8_t faceForHum (float h)  { return faceForRange(h, 30.0f, 60.0f, 10.0f); }
+static uint8_t faceForPres(float p)  { return faceForRange(p, 1005.0f, 1025.0f, 10.0f); }
+
 static void formatFixed1(char *out, size_t len, float value) {
   long scaled = lroundf(value * 10.0f);
   if (scaled < 0) {
@@ -128,12 +152,17 @@ static void lcdShowReadings(float tempC, float pressHPa, float humRH) {
   if (screen == 0) {
     snprintf(l1, sizeof(l1), "Temp:   %5s C", tempStr);
     snprintf(l2, sizeof(l2), "Hum.:   %5s %%", humStr);
+    lcdShowLine(0, l1);
+    lcdShowLine(1, l2);
+    lcd.setCursor(15, 0); lcd.write(faceForTemp(tempC));
+    lcd.setCursor(15, 1); lcd.write(faceForHum(humRH));
   } else {
     snprintf(l1, sizeof(l1), "Pressure:");
     snprintf(l2, sizeof(l2), "  %7s hPa", presStr);
+    lcdShowLine(0, l1);
+    lcdShowLine(1, l2);
+    lcd.setCursor(15, 1); lcd.write(faceForPres(pressHPa));
   }
-  lcdShowLine(0, l1);
-  lcdShowLine(1, l2);
 }
 
 static void bmeWrite(uint8_t reg, uint8_t value) {
@@ -278,6 +307,7 @@ void setup() {
   Wire.begin();
   lcd.begin(16, 2);
   lcd.setRGB(0, 180, 90);
+  lcdRegisterFaces();
   lcdShowLine(0, "BME280 init...");
   lcdShowLine(1, "");
 
