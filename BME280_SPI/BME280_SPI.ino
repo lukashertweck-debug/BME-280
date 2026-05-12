@@ -22,16 +22,18 @@
  * Library: install "Grove - LCD RGB Backlight" by Seeed Studio (>= v2.0
  * for V4.0 hardware) via the Arduino Library Manager. It exposes rgb_lcd.h.
  *
- * Output layout (16x2), alternates every ~2 s:
- *   Screen A:  "Temp:    23.5 C"
- *              "Hum.:    55.0 %"
- *   Screen B:  "Pressure:       "
- *              "   1013.2 hPa  "
+ * Serial menu (115200 baud): send a single character to choose what to show
+ *   '1' -> temperature only
+ *   '2' -> pressure only
+ *   '3' -> humidity only
+ *   '4' -> altitude (estimated from pressure)
+ *   any other / default -> rotating overview of temp/hum and pressure
  */
 
 #include <Arduino.h>
 #include <SPI.h>
 #include <Wire.h>
+#include <math.h>
 #include "rgb_lcd.h"
 
 static const uint8_t BME280_CS = PB6;
@@ -48,6 +50,10 @@ static const uint8_t REG_CALIB_26   = 0xE1;
 
 static const uint8_t CHIP_ID_BME280 = 0x60;
 static const uint8_t RESET_WORD     = 0xB6;
+
+// Reference sea-level pressure used by the altitude estimate.
+// Adjust to the current QNH at your location for a more accurate reading.
+static const float SEA_LEVEL_HPA = 1013.25f;
 
 static SPISettings bmeSpi(10000000, MSBFIRST, SPI_MODE0);
 
@@ -121,6 +127,7 @@ static uint8_t faceForRange(float v, float happyLo, float happyHi, float margin)
 static uint8_t faceForTemp(float t)  { return faceForRange(t, 18.0f, 26.0f,  4.0f); }
 static uint8_t faceForHum (float h)  { return faceForRange(h, 30.0f, 60.0f, 10.0f); }
 static uint8_t faceForPres(float p)  { return faceForRange(p, 1005.0f, 1025.0f, 10.0f); }
+static uint8_t faceForAlt (float a)  { return faceForRange(a, 0.0f, 1500.0f, 1500.0f); }
 
 static void formatFixed1(char *out, size_t len, float value) {
   long scaled = lroundf(value * 10.0f);
@@ -129,6 +136,64 @@ static void formatFixed1(char *out, size_t len, float value) {
   } else {
     snprintf(out, len, "%ld.%ld", scaled / 10, scaled % 10);
   }
+}
+
+// International Standard Atmosphere barometric formula, referenced to the
+// configurable sea-level pressure. Returns metres above sea level.
+static float altitudeFromPressure(float pressHPa) {
+  return 44330.0f * (1.0f - powf(pressHPa / SEA_LEVEL_HPA, 0.1903f));
+}
+
+static void print_press(float pressHPa) {
+  char presStr[10];
+  formatFixed1(presStr, sizeof(presStr), pressHPa);
+
+  char l1[17];
+  char l2[17];
+  snprintf(l1, sizeof(l1), "Pressure:");
+  snprintf(l2, sizeof(l2), "  %7s hPa", presStr);
+  lcdShowLine(0, l1);
+  lcdShowLine(1, l2);
+  lcd.setCursor(15, 1); lcd.write(faceForPres(pressHPa));
+}
+
+static void print_temp(float tempC) {
+  char tempStr[8];
+  formatFixed1(tempStr, sizeof(tempStr), tempC);
+
+  char l1[17];
+  char l2[17];
+  snprintf(l1, sizeof(l1), "Temperatur:");
+  snprintf(l2, sizeof(l2), "  %5s C", tempStr);
+  lcdShowLine(0, l1);
+  lcdShowLine(1, l2);
+  lcd.setCursor(15, 1); lcd.write(faceForTemp(tempC));
+}
+
+static void print_hum(float humRH) {
+  char humStr[8];
+  formatFixed1(humStr, sizeof(humStr), humRH);
+
+  char l1[17];
+  char l2[17];
+  snprintf(l1, sizeof(l1), "Humidity:");
+  snprintf(l2, sizeof(l2), "  %5s %%", humStr);
+  lcdShowLine(0, l1);
+  lcdShowLine(1, l2);
+  lcd.setCursor(15, 1); lcd.write(faceForHum(humRH));
+}
+
+static void print_alt(float altM) {
+  char altStr[10];
+  formatFixed1(altStr, sizeof(altStr), altM);
+
+  char l1[17];
+  char l2[17];
+  snprintf(l1, sizeof(l1), "Hoehe:");
+  snprintf(l2, sizeof(l2), "  %8s m", altStr);
+  lcdShowLine(0, l1);
+  lcdShowLine(1, l2);
+  lcd.setCursor(15, 1); lcd.write(faceForAlt(altM));
 }
 
 static void lcdShowReadings(float tempC, float pressHPa, float humRH) {
@@ -304,6 +369,7 @@ static void bmeRead(float &tempC, float &pressHPa, float &humRH) {
 }
 
 void setup() {
+  Serial.begin(115200);
   Wire.begin();
   lcd.begin(16, 2);
   lcd.setRGB(0, 180, 90);
@@ -321,9 +387,43 @@ void setup() {
   delay(800);
 }
 
+char choice = '0';
+bool zaehler = 0;
+
 void loop() {
+  if (Serial.available() > 0) {
+    if (!zaehler) {
+      choice = Serial.read();
+      Serial.print("C: ");
+      Serial.println((char)choice);
+    } else {
+      Serial.read();
+    }
+    zaehler = !zaehler;
+  }
+  Serial.print("Modus: ");
+  Serial.println(choice);
+
   float tempC, pressHPa, humRH;
   bmeRead(tempC, pressHPa, humRH);
-  lcdShowReadings(tempC, pressHPa, humRH);
+
+  switch (choice) {
+    case '1':
+      print_temp(tempC);
+      break;
+    case '2':
+      print_press(pressHPa);
+      break;
+    case '3':
+      print_hum(humRH);
+      break;
+    case '4':
+      print_alt(altitudeFromPressure(pressHPa));
+      break;
+    default:
+      lcdShowReadings(tempC, pressHPa, humRH);
+      break;
+  }
+
   delay(500);
 }
